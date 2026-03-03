@@ -1,0 +1,110 @@
+/*
+Covid Data Analysis Queries
+Author: Ximan Deng
+Project: Portfolio Project
+*/
+
+/* -------------------------
+1. Global COVID-19 Summary
+---------------------------*/
+SELECT 
+    SUM(new_cases) AS total_cases,
+    SUM(CAST(new_deaths AS INT)) AS total_deaths,
+    SUM(CAST(new_deaths AS INT)) * 1.0 / SUM(new_cases) * 100 AS DeathPercentage
+FROM CovidDeaths
+WHERE continent IS NOT NULL
+ORDER BY 1,2;
+
+/* -------------------------
+2. Country-level Death Counts (locations not part of a continent)
+---------------------------*/
+SELECT 
+    location, 
+    SUM(CAST(new_deaths AS INT)) AS TotalDeathCount
+FROM CovidDeaths
+WHERE continent IS NULL 
+  AND location NOT IN ('World', 'European Union', 'International')
+GROUP BY location
+ORDER BY TotalDeathCount DESC;
+
+/* -------------------------
+3. Highest Infection Rate vs Population
+---------------------------*/
+SELECT 
+    Location, 
+    Population, 
+    MAX(total_cases) AS HighestInfectionCount,  
+    MAX(total_cases*1.0 / population)*100 AS PercentPopulationInfected
+FROM CovidDeaths
+GROUP BY Location, Population
+ORDER BY PercentPopulationInfected DESC;
+
+/* -------------------------
+4. Total Cases and Deaths per Location
+---------------------------*/
+SELECT 
+    Location, date, total_cases, new_cases, total_deaths, population
+FROM CovidDeaths
+WHERE continent IS NOT NULL
+ORDER BY Location, date;
+
+SELECT 
+    Location, date, total_cases, total_deaths, 
+    (total_deaths*1.0/total_cases)*100 AS DeathPercentage
+FROM CovidDeaths
+WHERE location LIKE '%states%' AND continent IS NOT NULL
+ORDER BY Location, date;
+
+/* -------------------------
+5. Vaccination Analysis
+---------------------------*/
+WITH PopvsVac AS (
+    SELECT 
+        dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+        SUM(CAST(vac.new_vaccinations AS INT)) OVER (
+            PARTITION BY dea.location ORDER BY dea.location, dea.date
+        ) AS RollingPeopleVaccinated
+    FROM CovidDeaths dea 
+    JOIN CovidVaccinations vac 
+      ON dea.location = vac.location AND dea.date = vac.date
+    WHERE dea.continent IS NOT NULL
+)
+SELECT *, (RollingPeopleVaccinated*1.0 / Population)*100 AS PercentPopulationVaccinated
+FROM PopvsVac;
+
+/* -------------------------
+6. Optional: Create Temporary Table / View for Vaccination
+---------------------------*/
+DROP TABLE IF EXISTS PercentPopulationVaccinated;
+
+CREATE TEMP TABLE PercentPopulationVaccinated (
+    Continent VARCHAR(255),
+    Location VARCHAR(255),
+    Date DATETIME,
+    Population NUMERIC,
+    New_vaccinations NUMERIC,
+    RollingPeopleVaccinated NUMERIC
+);
+
+INSERT INTO PercentPopulationVaccinated
+SELECT 
+    dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(CAST(vac.new_vaccinations AS INT)) OVER (
+        PARTITION BY dea.location ORDER BY dea.location, dea.date
+    ) AS RollingPeopleVaccinated
+FROM CovidDeaths dea 
+JOIN CovidVaccinations vac 
+  ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent IS NOT NULL;
+
+-- Optional View
+CREATE VIEW PercentPopulationVaccinated AS
+SELECT 
+    dea.continent, dea.location, dea.date, dea.population, vac.new_vaccinations,
+    SUM(CAST(vac.new_vaccinations AS INT)) OVER (
+        PARTITION BY dea.location ORDER BY dea.location, dea.date
+    ) AS RollingPeopleVaccinated
+FROM CovidDeaths dea 
+JOIN CovidVaccinations vac 
+  ON dea.location = vac.location AND dea.date = vac.date
+WHERE dea.continent IS NOT NULL;
